@@ -5,10 +5,11 @@ import plotly.express as px
 import re
 from datetime import datetime
 
-st.set_page_config(page_title="台股究極分析儀", page_icon="💎", layout="wide")
+# 網頁基礎設定
+st.set_page_config(page_title="台股多股利投資分析", page_icon="📈", layout="wide")
 
-@st.cache_data(ttl=300) # 股價快取縮短至 5 分鐘
-def get_ultimate_data(stock_ids):
+@st.cache_data(ttl=300) 
+def get_investment_data(stock_ids):
     all_divs = []
     prices = {}
     dl = DataLoader()
@@ -22,10 +23,9 @@ def get_ultimate_data(stock_ids):
             
             if df_div is None or df_div.empty or df_price is None: continue
 
-            # 1. 取得最新成交價與日期
+            # 1. 取得最新成交價
             latest_price = df_price.iloc[-1]['close']
-            latest_date = df_price.iloc[-1]['date']
-            prices[sid] = {'price': latest_price, 'date': latest_date}
+            prices[sid] = {'price': latest_price}
 
             # 2. 年度清理與西元轉換
             def clean_year(y):
@@ -52,22 +52,22 @@ def get_ultimate_data(stock_ids):
             
     return (pd.concat(all_divs) if all_divs else None), prices
 
-# --- 介面 ---
-st.title("💎 台股究極投資分析儀")
-st.markdown("當前時間: " + datetime.now().strftime('%Y-%m-%d %H:%M'))
+# --- 介面設計 ---
+st.title("📈 台股多股利投資分析系統")
+st.caption(f"數據更新時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-input_ids = st.text_input("輸入對比代號 (例: 2330, 2881, 2454)", value="2330, 2881")
+input_ids = st.text_input("輸入對比代號 (例: 2330, 2881)", value="2330, 2881")
 
 if input_ids:
-    with st.spinner('正在計算預估值...'):
-        data, current_info = get_ultimate_data(input_ids)
+    with st.spinner('正在同步市場數據...'):
+        data, current_info = get_investment_data(input_ids)
         
         if data is not None:
-            # 頂部：預估殖利率看板
-            st.subheader("🎯 預估即時殖利率 (以最新股利 / 當前股價計算)")
+            # 第一區塊：市場行情與預估
+            st.subheader("🎯 當前行情與預估殖利率")
             metrics = st.columns(len(current_info))
             for i, (sid, info) in enumerate(current_info.items()):
-                # 抓取該股最後一次的總股利
+                # 取出最後一年的配息金額計算預估殖利率
                 last_div = data[data['股票代號'] == sid].iloc[-1]['現金股利']
                 est_yield = round((last_div / info['price']) * 100, 2)
                 
@@ -78,23 +78,31 @@ if input_ids:
                     delta_color="off"
                 )
 
-            # 圖表區
-            tab1, tab2 = st.tabs(["📊 殖利率對比", "💰 配息成長性"])
+            st.divider()
+
+            # 第二區塊：視覺化分析
+            st.subheader("📊 歷年數據對比")
+            tab1, tab2 = st.tabs(["殖利率走勢", "配息金額"])
+            
             with tab1:
-                fig1 = px.line(data, x='year', y='歷史殖利率(%)', color='股票代號', markers=True)
+                fig1 = px.line(data, x='year', y='歷史殖利率(%)', color='股票代號', markers=True,
+                               title="歷年平均殖利率走勢 (以年度均價計算)")
                 fig1.update_xaxes(type='category', title="年度")
                 st.plotly_chart(fig1, use_container_width=True)
             
             with tab2:
-                fig2 = px.bar(data, x='year', y='現金股利', color='股票代號', barmode='group', text_auto='.1f')
+                fig2 = px.bar(data, x='year', y='現金股利', color='股票代號', barmode='group', text_auto='.1f',
+                              title="歷年現金股利發放對比")
                 fig2.update_xaxes(type='category', title="年度")
                 st.plotly_chart(fig2, use_container_width=True)
 
-            # 詳細表格
-            with st.expander("📂 查看各股詳細配息歷史"):
-                st.dataframe(data.sort_values(['股票代號', 'year'], ascending=[True, False]), use_container_width=True)
+            # 第三區塊：原始數據
+            with st.expander("📂 查看詳細歷史數據報表"):
+                # 重新整理表格顯示
+                df_display = data.sort_values(['股票代號', 'year'], ascending=[True, False])
+                st.dataframe(df_display, use_container_width=True)
         else:
-            st.warning("請確認代號輸入是否正確。")
+            st.warning("請確認代號輸入是否正確，或該股票是否有配息紀錄。")
 
 st.divider()
-st.caption("提示：預估殖利率採用『最近一次發放的總股利』與『今日收盤價』計算，僅供參考。")
+st.info("💡 說明：『預估殖利率』係以最近一年度發放之現金股利總額除以最新收盤價計算，僅供投資參考。")
