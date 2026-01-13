@@ -10,13 +10,12 @@ st.set_page_config(page_title="台股股利小幫手", page_icon="📈", layout=
 def load_dividend_data(stock_id):
     try:
         dl = DataLoader()
-        # 抓取資料
         df = dl.taiwan_stock_dividend(stock_id=stock_id, start_date='2010-01-01')
         
         if df is None or df.empty:
             return None
         
-        # 欄位對應與清洗
+        # 欄位對應
         rename_map = {
             'year': '年度',
             'CashEarningsDistribution': '現金股利',
@@ -26,14 +25,17 @@ def load_dividend_data(stock_id):
         existing_cols = [c for c in rename_map.keys() if c in df.columns]
         df = df[existing_cols].rename(columns=rename_map)
         
-        # 轉換數值並補 0
+        # 數值轉換與清理
         for col in ['現金股利', '股票股利']:
-            if col not in df.columns:
-                df[col] = 0.0
-            else:
+            if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            else:
+                df[col] = 0.0
 
-        # 按年度合併加總 (例如處理季配息)
+        # 年度欄位預處理：確保它是字串以方便顯示
+        df['年度'] = df['年度'].astype(str)
+
+        # 按年度合併加總
         report = df.groupby('年度').agg({
             '現金股利': 'sum',
             '股票股利': 'sum'
@@ -55,14 +57,13 @@ if stock_id:
     with st.spinner('數據計算中...'):
         data = load_dividend_data(stock_id)
         
-        if data is not None:
-            # 取得最新一年的數據
+        if data is not None and not data.empty:
             latest = data.iloc[0]
             
-            # 頂部數據卡片 (加上 round 處理小數點)
+            # 頂部數據卡片 - 移除 int() 轉換避免報錯，並使用 round 格式化數字
             c1, c2, c3 = st.columns(3)
-            c1.metric(f"{int(latest['年度'])}年度 現金股利", f"{round(latest['現金股利'], 2)} 元")
-            c2.metric(f"{int(latest['年度'])}年度 股票股利", f"{round(latest['股票股利'], 2)} 元")
+            c1.metric(f"{latest['年度']}年度 現金股利", f"{round(float(latest['現金股利']), 2)} 元")
+            c2.metric(f"{latest['年度']}年度 股票股利", f"{round(float(latest['股票股利']), 2)} 元")
             c3.metric("歷史收錄年數", f"{len(data)} 年")
 
             # 趨勢圖表
@@ -73,10 +74,9 @@ if stock_id:
                          color_discrete_map={'現金股利': '#00CC96', '股票股利': '#636EFA'})
             st.plotly_chart(fig, use_container_width=True)
 
-            # 詳細數據表格 (美化顯示小數點兩位)
+            # 詳細數據表格
             st.subheader("📋 詳細數據報表")
             st.dataframe(data.style.format({
-                '年度': '{:.0f}',
                 '現金股利': '{:.2f}',
                 '股票股利': '{:.2f}',
                 '總計': '{:.2f}'
